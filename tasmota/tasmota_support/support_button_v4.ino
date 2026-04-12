@@ -24,6 +24,8 @@
  *
  * Inspired by (https://github.com/OLIMEX/olimex-iot-firmware-esp8266/blob/master/olimex/user/user_switch2.c)
 \*********************************************************************************************/
+#include <Arduino.h>
+#include "tasmota.h"
 
 #define MAX_RELAY_BUTTON1 5 // Max number of relay controlled by BUTTON1
 
@@ -256,14 +258,13 @@ void ButtonInit(void) {
     */
     for (uint32_t i = 0; i < MAX_KEYS_SET; i++) {
         Button.last_state[i] = NOT_PRESSED;
-        #if defined(ESP8266)
-        if ((0 == i) && ((SONOFF_DUAL == TasmotaGlobal.module_type) || (CH4 == TasmotaGlobal.module_type))) {
+        if (CONFIG_SOC_ESP8266 &&
+            (0 == i) && ((SONOFF_DUAL == TasmotaGlobal.module_type) || (CH4 == TasmotaGlobal.module_type))) {
             bitSet(Button.used, i); // This pin is used
         }
-        else
-        #endif // ESP8266
-            if (PinUsed(GPIO_KEY1, i)) {
+        else if (PinUsed(GPIO_KEY1, i)) {
                 bitSet(Button.used, i); // This pin is used
+
                 #if defined(ESP8266)
                 pinMode(Pin(GPIO_KEY1, i), bitRead(Button.no_pullup_mask, i)
                                            ? INPUT
@@ -365,8 +366,8 @@ uint8_t ButtonSerial(uint8_t serial_in_byte) {
     }
 
     if (0xA0 == serial_in_byte) { // 0xA0 - Start of Sonoff dual button code
-        serial_in_byte            = 0;
-        Button.dual_code          = 0;
+        serial_in_byte   = 0;
+        Button.dual_code = 0;
         Button.dual_receive_count = 3;
     }
 
@@ -400,8 +401,8 @@ void ButtonHandler(void) {
 
         uint8_t button = Button.debounced_state[button_index];
 
-        #if defined(ESP8266)
-        if (!button_index && ((SONOFF_DUAL == TasmotaGlobal.module_type) || (CH4 == TasmotaGlobal.module_type))) {
+        if (CONFIG_SOC_ESP8266 &&
+            (!button_index) && ((SONOFF_DUAL == TasmotaGlobal.module_type) || (CH4 == TasmotaGlobal.module_type))) {
             if (Button.dual_code) {
                 AddLog(LOG_LEVEL_DEBUG, PSTR("BTN: Code %04X"), Button.dual_code);
                 button = PRESSED;
@@ -416,55 +417,51 @@ void ButtonHandler(void) {
                 button = NOT_PRESSED;
             }
         }
-        else
-        #endif // ESP8266
-            if (PinUsed(GPIO_KEY1, button_index)) {
+        else if (PinUsed(GPIO_KEY1, button_index)) {
 
-                #if defined(SOC_TOUCH_VERSION_1) || defined(SOC_TOUCH_VERSION_2)
-                if (bitRead(TouchButton.touch_mask, button_index) &&
-                    bitRead(TouchButton.calibration, button_index + 1)) { // Touch
-                    uint32_t _value = touchRead(Pin(GPIO_KEY1, button_index));
-                    #ifdef SOC_TOUCH_VERSION_2
-                    if (_value > Settings->touch_threshold) { // ESPS3 No touch = 24200, Touch = 100000
-                    #else
-                    if ((_value > 0) &&
-                        (_value <
-                         Settings->touch_threshold)) { // ESP32 No touch = 74, Touch = 20 (Probably read-error (0))
-                    #endif
-                        TouchButton.hits[button_index]++;
-                    }
-                    else {
-                        TouchButton.hits[button_index] = 0;
-                    }
-
-                    AddLog(
-                        LOG_LEVEL_INFO, PSTR("PLOT: %u, %u, %u,"), button_index + 1, _value,
-                        TouchButton.hits[button_index]); // Button number (1..4), value, continuous hits under threshold
-                    continue;
+            #if defined(SOC_TOUCH_VERSION_1) || defined(SOC_TOUCH_VERSION_2)
+            if (bitRead(TouchButton.touch_mask, button_index) &&
+                bitRead(TouchButton.calibration, button_index + 1)) { // Touch
+                uint32_t _value = touchRead(Pin(GPIO_KEY1, button_index));
+                #ifdef SOC_TOUCH_VERSION_2
+                if (_value > Settings->touch_threshold) { // ESPS3 No touch = 24200, Touch = 100000
+                #else
+                if ((_value > 0) &&
+                    (_value <
+                     Settings->touch_threshold)) { // ESP32 No touch = 74, Touch = 20 (Probably read-error (0))
+                #endif
+                    TouchButton.hits[button_index]++;
                 }
-                #endif // ESP32 SOC_TOUCH_VERSION_1 or SOC_TOUCH_VERSION_2
-            }
+                else {
+                    TouchButton.hits[button_index] = 0;
+                }
 
-            #ifdef USE_ADC
-            #ifndef FIRMWARE_MINIMAL
-            else if (PinUsed(GPIO_ADC_BUTTON, button_index)) {
-                button = AdcGetButton(Pin(GPIO_ADC_BUTTON, button_index));
+                AddLog(
+                    LOG_LEVEL_INFO, PSTR("PLOT: %u, %u, %u,"), button_index + 1, _value,
+                    TouchButton.hits[button_index]); // Button number (1..4), value, continuous hits under threshold
+                continue;
             }
-            else if (PinUsed(GPIO_ADC_BUTTON_INV, button_index)) {
-                button = AdcGetButton(Pin(GPIO_ADC_BUTTON_INV, button_index));
-            }
-            #endif // FIRMWARE_MINIMAL
-            #endif // USE_ADC
+            #endif // ESP32 SOC_TOUCH_VERSION_1 or SOC_TOUCH_VERSION_2
+        }
+        #ifdef USE_ADC
+        #ifndef FIRMWARE_MINIMAL
+        else if (PinUsed(GPIO_ADC_BUTTON, button_index)) {
+            button = AdcGetButton(Pin(GPIO_ADC_BUTTON, button_index));
+        }
+        else if (PinUsed(GPIO_ADC_BUTTON_INV, button_index)) {
+            button = AdcGetButton(Pin(GPIO_ADC_BUTTON_INV, button_index));
+        }
+        #endif // FIRMWARE_MINIMAL
+        #endif // USE_ADC
 
-            XdrvMailbox.index   = button_index;
-            XdrvMailbox.payload = button;
-            XdrvMailbox.command_code =
-                (Button.last_state[button_index] & 0xFF) | ((Button.press_counter[button_index] & 0xFF) << 8);
-            if (XdrvCall(FUNC_BUTTON_PRESSED)) {
-                // Serviced
-            }
-        #if defined(ESP8266)
-        else if (SONOFF_4CHPRO == TasmotaGlobal.module_type) {
+        XdrvMailbox.index   = button_index;
+        XdrvMailbox.payload = button;
+        XdrvMailbox.command_code =
+            (Button.last_state[button_index] & 0xFF) | ((Button.press_counter[button_index] & 0xFF) << 8);
+        if (XdrvCall(FUNC_BUTTON_PRESSED)) {
+            // Serviced
+        }
+        else if (CONFIG_SOC_ESP8266 && (SONOFF_4CHPRO == TasmotaGlobal.module_type)) {
             if (Button.hold_timer[button_index]) {
                 Button.hold_timer[button_index]--;
             }
@@ -494,7 +491,6 @@ void ButtonHandler(void) {
                 }
             }
         }
-        #endif // ESP8266
         else {
             if ((PRESSED == button) && (NOT_PRESSED == Button.last_state[button_index])) {
                 if (Settings->flag.button_single) {             // SetOption13 (0) - Allow only single button press for immediate action,
@@ -577,14 +573,12 @@ void ButtonHandler(void) {
 
                         bool single_press = false;
                         if (Button.press_counter[button_index] < 3) { // Single or Double press
-                            #if defined(ESP8266)
-                            if ((SONOFF_DUAL_R2 == TasmotaGlobal.module_type) ||
-                                (SONOFF_DUAL == TasmotaGlobal.module_type) || (CH4 == TasmotaGlobal.module_type)) {
+                            if (CONFIG_SOC_ESP8266 &&
+                                ((SONOFF_DUAL_R2 == TasmotaGlobal.module_type) ||
+                                (SONOFF_DUAL == TasmotaGlobal.module_type) || (CH4 == TasmotaGlobal.module_type))) {
                                 single_press = true;
                             }
-                            else
-                            #endif // ESP8266
-                            {
+                            else {
                                 single_press = (Settings->flag.button_swap + 1 ==
                                                 Button.press_counter[button_index]); // SetOption11 (0)
                                 if ((1 == Button.used) &&

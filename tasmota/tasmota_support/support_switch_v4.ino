@@ -24,6 +24,8 @@
  *
  * Inspired by (https://github.com/OLIMEX/olimex-iot-firmware-esp8266/blob/master/olimex/user/user_switch2.c)
 \*********************************************************************************************/
+#include <Arduino.h>
+#include "tasmota.h"
 
 uint8_t const SWITCH_PROBE_INTERVAL      = 10; // Time in milliseconds between switch input probe
 uint8_t const SWITCH_FAST_PROBE_INTERVAL = 2;  // Time in milliseconds between switch input probe for AC detection

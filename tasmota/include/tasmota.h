@@ -37,6 +37,17 @@ const uint32_t POWER_SIZE = 32;             // Power (relay) bit count
 /*********************************************************************************************\
  * Constants
 \*********************************************************************************************/
+#if defined(ESP8266) /* #CUSTOM@NDRS */
+#define CONFIG_SOC_ESP8266  1
+#else
+#define CONFIG_SOC_ESP8266  0
+#endif
+
+#if defined(ESP32) /* #CUSTOM@NDRS */
+#define CONFIG_SOC_ESP32  1
+#else
+#define CONFIG_SOC_ESP32  0
+#endif
 
 #ifdef ESP8266
 const uint8_t MAX_RELAYS = 8;               // Max number of relays selectable on GPIO

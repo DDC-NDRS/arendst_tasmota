@@ -21,6 +21,9 @@ extern "C" {
 extern struct rst_info resetInfo;
 }
 
+#include <Arduino.h>
+#include "tasmota.h"
+
 /*********************************************************************************************\
  * ESP32 Watchdog
 \*********************************************************************************************/
@@ -1793,9 +1796,9 @@ String AnyModuleName(uint32_t index) {
         return String(SettingsText(SET_TEMPLATE_NAME));
     }
     else {
-        #if defined(ESP32)
-        index = ModuleTemplate(index);
-        #endif
+        if (CONFIG_SOC_ESP32) {
+            index = ModuleTemplate(index);
+        }
 
         char name[TOPSZ];
         return String(GetTextIndexed(name, sizeof(name), index, kModuleNames));
@@ -1877,48 +1880,51 @@ void TemplateGpios(myio* gp) {
     // Expand template to physical GPIO array, j=phy_GPIO, i=template_GPIO
     uint32_t j = 0;
     for (uint32_t i = 0; i < nitems(Settings->user_template.gp.io); i++) {
-    /*
-    #if defined(ESP32) && CONFIG_IDF_TARGET_ESP32C3
-    dest[i] = src[i];
-    #elif defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
-    if (22 == i) { j = 33; }    // skip 22-32
-    dest[j] = src[i];
-    j++;
-    #elif defined(CONFIG_IDF_TARGET_ESP32)
-    dest[Esp32TemplateToPhy[i]] = src[i];
-    #else // ESP8266
-    if (6 == i) { j = 9; }
-    if (8 == i) { j = 12; }
-    dest[j] = src[i];
-    j++;
-    #endif
-    */
+        /*
+        #if defined(ESP32) && CONFIG_IDF_TARGET_ESP32C3
+        dest[i] = src[i];
+        #elif defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+        if (22 == i) { j = 33; }    // skip 22-32
+        dest[j] = src[i];
+        j++;
+        #elif defined(CONFIG_IDF_TARGET_ESP32)
+        dest[Esp32TemplateToPhy[i]] = src[i];
+        #else // ESP8266
+        if (6 == i) { j = 9; }
+        if (8 == i) { j = 12; }
+        dest[j] = src[i];
+        j++;
+        #endif
+        */
 
-    #if defined(ESP8266)
-    if (6 == i) {
-        j = 9;
-    }
-    if (8 == i) {
-        j = 12;
-    }
-    dest[j] = src[i];
-    j++;
-    #endif // ESP8266
+        if (CONFIG_SOC_ESP8266) {
+            if (6 == i) {
+                j = 9;
+            }
 
-    #if defined(ESP32)
-    #if CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C5 ||                             \
-        CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32P4
-    dest[i] = src[i];
-    #elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-    if (22 == i) {
-        j = 33;
-    } // skip 22-32
-    dest[j] = src[i];
-    j++;
-    #else  // ESP32
-    dest[Esp32TemplateToPhy[i]] = src[i];
-    #endif // ESP32C2/C3/C6 and S2/S3
-    #endif // ESP32
+            if (8 == i) {
+                j = 12;
+            }
+            dest[j] = src[i];
+            j++;
+        }
+
+        // compile-switch required: Esp32TemplateToPhy is declared only inside #ifdef CONFIG_IDF_TARGET_ESP32;
+        // inner IDF-variant guards would expose it to ESP8266 compilation if converted to if (CONFIG_SOC_ESP32)
+        #if defined(ESP32)
+        #if CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C5 ||                             \
+            CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32P4
+        dest[i] = src[i];
+        #elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+        if (22 == i) {
+            j = 33;
+        } // skip 22-32
+        dest[j] = src[i];
+        j++;
+        #else  // ESP32
+        dest[Esp32TemplateToPhy[i]] = src[i];
+        #endif // ESP32C2/C3/C6 and S2/S3
+        #endif // ESP32
     }
     // 11 85 00 85 85 00 00 00 00 00 00 00 15 38 85 00 00 81
 
@@ -1950,9 +1956,9 @@ void ModuleDefault(uint32_t module) {
     } // Generic
     Settings->user_template_base = module;
 
-    #if defined(ESP32)
-    module = ModuleTemplate(module);
-    #endif
+    if (CONFIG_SOC_ESP32) {
+        module = ModuleTemplate(module);
+    }
 
     char name[TOPSZ];
     SettingsUpdateText(SET_TEMPLATE_NAME, GetTextIndexed(name, sizeof(name), module, kModuleNames));
@@ -1969,11 +1975,9 @@ void ModuleDefault(uint32_t module) {
 void SetModuleType(void) {
     TasmotaGlobal.module_type = (USER_MODULE == Settings->module) ? Settings->user_template_base : Settings->module;
 
-    #if defined(ESP32)
-    if (TasmotaGlobal.emulated_module_type) {
+    if (CONFIG_SOC_ESP32 && TasmotaGlobal.emulated_module_type) {
         TasmotaGlobal.module_type = TasmotaGlobal.emulated_module_type;
     }
-    #endif
 }
 
 bool FlashPin(uint32_t pin) {
@@ -2039,14 +2043,12 @@ uint32_t ValidPin(uint32_t pin, uint32_t gpio, uint8_t isTuya = false) {
         return GPIO_NONE; // Disable flash pins GPIO6, GPIO7, GPIO8 and GPIO11
     }
 
-    #if defined(ESP8266)
-    if (((WEMOS == Settings->module) || isTuya) &&
+    if (CONFIG_SOC_ESP8266 && ((WEMOS == Settings->module) || isTuya) &&
         !Settings->flag3.user_esp8285_enable) { // SetOption51 - Enable ESP8285 user GPIO's
         if ((9 == pin) || (10 == pin)) {
             return GPIO_NONE; // Disable possible flash GPIO9 and GPIO10
         }
     }
-    #endif
 
     return gpio;
 }
@@ -2077,6 +2079,7 @@ bool ValidSpiPinUsed(uint32_t gpio) {
 
 String ArchName(void) {
     String arch = TASMOTA_ARCH;
+
     arch.toUpperCase();
     if (arch.equals("ESP32SOLO1")) {
         arch = "ESP32";
@@ -2108,10 +2111,12 @@ bool JsonTemplate(char* dataBuf) {
             return (false); // Bad architecture
         }
     }
+
     val = root[PSTR(D_JSON_NAME)];
     if (val) {
         SettingsUpdateText(SET_TEMPLATE_NAME, val.getStr());
     }
+
     JsonParserArray arr = root[PSTR(D_JSON_GPIO)];
     if (arr) {
         #if defined(ESP8266)
@@ -2128,6 +2133,7 @@ bool JsonTemplate(char* dataBuf) {
             }
             old_template = (gpio < 256);
         }
+
         if (old_template) {
 
             AddLog(LOG_LEVEL_DEBUG, PSTR("TPL: Converting template ..."));
@@ -2232,7 +2238,7 @@ uint32_t JsonParsePath(JsonParserObject* jobj, char const* spath, char delim, fl
     uint8_t aindex = 0;
     String value  = "";
 
-    while (1) {
+    while (true) {
         // read next element
         for (uint32_t sp = 0; sp < sizeof(selem) - 1; sp++) {
             if (!*cp || *cp == delim) {
@@ -2398,6 +2404,7 @@ uint32_t GetSerialBaudrate(void) {
     if (baudrate > 10000) {
         margin = 2400;
     }
+
     return (baudrate / margin) * margin; // Fix ESP32 strange results like 115201
 }
 
@@ -2417,6 +2424,7 @@ void SetSerialBegin(void) {
     TasmotaGlobal.baudrate = Settings->baudrate * 300;
     AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_SERIAL "Set to %s %d bit/s"), GetSerialConfig().c_str(), TasmotaGlobal.baudrate);
     Serial.flush();
+
     #if defined(ESP8266)
     Serial.begin(TasmotaGlobal.baudrate, (SerialConfig)ConvertSerialConfig(Settings->serial_config));
     SetSerialSwap();
@@ -2535,9 +2543,10 @@ uint8_t TasShiftIn(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder) {
 
     for (uint32_t i = 0; i < 8; ++i) {
         digitalWrite(clockPin, HIGH);
-        #if defined(ESP32)
-        delayMicroseconds(1);
-        #endif
+
+        if (CONFIG_SOC_ESP32) {
+            delayMicroseconds(1);
+        }
 
         if (bitOrder == LSBFIRST) {
             value |= digitalRead(dataPin) << i;
@@ -2546,9 +2555,10 @@ uint8_t TasShiftIn(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder) {
             value |= digitalRead(dataPin) << (7 - i);
         }
         digitalWrite(clockPin, LOW);
-        #if defined(ESP32)
-        delayMicroseconds(1);
-        #endif
+
+        if (CONFIG_SOC_ESP32) {
+            delayMicroseconds(1);
+        }
     }
 
     return value;
@@ -2564,15 +2574,15 @@ void TasShiftOut(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder, uint8_t va
         }
         digitalWrite(clockPin, HIGH);
 
-        #if defined(ESP32)
-        delayMicroseconds(1);
-        #endif
+        if (CONFIG_SOC_ESP32) {
+            delayMicroseconds(1);
+        }
 
         digitalWrite(clockPin, LOW);
 
-        #if defined(ESP32)
-        delayMicroseconds(1);
-        #endif
+        if (CONFIG_SOC_ESP32) {
+            delayMicroseconds(1);
+        }
     }
 }
 
@@ -2864,23 +2874,24 @@ void SyslogAsync(bool refresh) {
             TasConsole.printf((char*)"'\r\n");
             */
 
-            #if defined(ESP8266)
-            // Packets over 1460 bytes are not send
-            uint32_t package_len;
-            int32_t  log_len = msg_len;
-            while (log_len > 0) {
-                PortUdp.write(header);
-                package_len = (log_len > 1460) ? 1460 : log_len;
-                PortUdp.write((uint8_t*)msg_start, package_len);
-                PortUdp.endPacket();
-                log_len -= 1460;
-                msg_start += 1460;
+            if (CONFIG_SOC_ESP8266) {
+                // Packets over 1460 bytes are not send
+                uint32_t package_len;
+                int32_t  log_len = msg_len;
+                while (log_len > 0) {
+                    PortUdp.write((const uint8_t*)header, strlen(header));
+                    package_len = (log_len > 1460) ? 1460 : log_len;
+                    PortUdp.write((uint8_t*)msg_start, package_len);
+                    PortUdp.endPacket();
+                    log_len -= 1460;
+                    msg_start += 1460;
+                }
             }
-            #else
-            PortUdp.write((const uint8_t*)header, strlen(header));
-            PortUdp.write((uint8_t*)msg_start, msg_len);
-            PortUdp.endPacket();
-            #endif
+            else {
+                PortUdp.write((const uint8_t*)header, strlen(header));
+                PortUdp.write((uint8_t*)msg_start, msg_len);
+                PortUdp.endPacket();
+            }
 
             delay(1); // Add time for UDP handling (#5512)
         }
