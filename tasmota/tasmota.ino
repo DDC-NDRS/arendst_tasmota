@@ -440,6 +440,8 @@ LList<char*> backlog; // Command backlog implemented with TasmotaLList
 #endif // ESP32
 
 void setup(void) {
+    auto& glb = TasmotaGlobal;
+
     #if (defined(ESP32) && defined(CONFIG_IDF_TARGET_ESP32))
 
     #if defined(DISABLE_ESP32_BROWNOUT)
@@ -472,23 +474,23 @@ void setup(void) {
     EmergencyReset();
     #endif // USE_EMERGENCY_RESET
 
-    TasmotaGlobal.baudrate            = APP_BAUDRATE;
-    TasmotaGlobal.seriallog_timer     = SERIALLOG_TIMER;
-    TasmotaGlobal.temperature_celsius = NAN;
-    TasmotaGlobal.blinks              = 201;
-    TasmotaGlobal.wifi_state_flag     = WIFI_RESTART;
-    TasmotaGlobal.tele_period         = 9999;
-    TasmotaGlobal.active_device       = 1;
-    TasmotaGlobal.global_state.data   = 0xF;                    // Init global state (wifi_down, mqtt_down) to solve possible network issues
-    TasmotaGlobal.maxlog_level        = LOG_LEVEL_DEBUG_MORE;
+    glb.baudrate            = APP_BAUDRATE;
+    glb.seriallog_timer     = SERIALLOG_TIMER;
+    glb.temperature_celsius = NAN;
+    glb.blinks              = 201;
+    glb.wifi_state_flag     = WIFI_RESTART;
+    glb.tele_period         = 9999;
+    glb.active_device       = 1;
+    glb.global_state.data   = 0xF;                    // Init global state (wifi_down, mqtt_down) to solve possible network issues
+    glb.maxlog_level        = LOG_LEVEL_DEBUG_MORE;
     if (SERIAL_LOG_LEVEL > LOG_LEVEL_INFO) {
-        TasmotaGlobal.seriallog_level =  SERIAL_LOG_LEVEL
+        glb.seriallog_level =  SERIAL_LOG_LEVEL;
     }
     else {
         // Allow specific serial messages until config loaded and allow more logging than INFO
-        TasmotaGlobal.seriallog_level = LOG_LEVEL_INFO;
+        glb.seriallog_level = LOG_LEVEL_INFO;
     }
-    TasmotaGlobal.power_latching = 0x80000000;
+    glb.power_latching = 0x80000000;
 
     RtcRebootLoad();
     if (!RtcRebootValid()) {
@@ -510,7 +512,7 @@ void setup(void) {
     if (RtcSettingsLoad(0)) {
         uint32_t baudrate = (RtcSettings.baudrate / 300) * 300; // Make it a valid baudrate
         if (baudrate) {
-            TasmotaGlobal.baudrate = baudrate;
+            glb.baudrate = baudrate;
         }
     }
 
@@ -518,14 +520,14 @@ void setup(void) {
     #if defined(PIO_FRAMEWORK_ARDUINO_MMU_CACHE16_IRAM48_SECHEAP_SHARED)
     ESP.setIramHeap();
     Settings = (TSettings*)calloc(1, sizeof(TSettings));        // Allocate in "new" 16k heap space
-    TasmotaGlobal.log_buffer = (char*)malloc(LOG_BUFFER_SIZE);  // Allocate in "new" 16k heap space
+    glb.log_buffer = (char*)malloc(LOG_BUFFER_SIZE);  // Allocate in "new" 16k heap space
     ESP.resetHeap();
-    if (TasmotaGlobal.log_buffer == nullptr) {
-        TasmotaGlobal.log_buffer = (char*)malloc(LOG_BUFFER_SIZE); // Allocate in "old" heap space as fallback
+    if (glb.log_buffer == nullptr) {
+        glb.log_buffer = (char*)malloc(LOG_BUFFER_SIZE); // Allocate in "old" heap space as fallback
     }
 
-    if (TasmotaGlobal.log_buffer != nullptr) {
-        TasmotaGlobal.log_buffer[0] = '\0';
+    if (glb.log_buffer != nullptr) {
+        glb.log_buffer[0] = '\0';
     }
     #endif // PIO_FRAMEWORK_ARDUINO_MMU_CACHE16_IRAM48_SECHEAP_SHARED
 
@@ -567,7 +569,7 @@ void setup(void) {
         HWCDCSerial.~HWCDC();                                   // not needed, deinit CDC
         #endif // SOC_USB_SERIAL_JTAG_SUPPORTED
         // Init command serial console preparing for AddLog use
-        Serial.begin(TasmotaGlobal.baudrate);
+        Serial.begin(glb.baudrate);
         Serial.println();
         TasConsole        = Serial;                             // Fallback
         tasconsole_serial = true;
@@ -575,7 +577,7 @@ void setup(void) {
     }
     #else  // No USE_USB_CDC_CONSOLE
     // Init command serial console preparing for AddLog use
-    Serial.begin(TasmotaGlobal.baudrate);
+    Serial.begin(glb.baudrate);
     Serial.println();
     // Serial.setRxBufferSize(INPUT_BUFFER_SIZE);               // Default is 256 chars
     TasConsole = Serial;
@@ -583,7 +585,7 @@ void setup(void) {
 
     #else  // No ESP32C3, S2 or S3
     // Init command serial console preparing for AddLog use
-    Serial.begin(TasmotaGlobal.baudrate);
+    Serial.begin(glb.baudrate);
     Serial.println();
     // Serial.setRxBufferSize(INPUT_BUFFER_SIZE);               // Default is 256 chars
     TasConsole = Serial;
@@ -591,7 +593,7 @@ void setup(void) {
 
     #else // No ESP32
     // Init command serial console preparing for AddLog use
-    Serial.begin(TasmotaGlobal.baudrate);
+    Serial.begin(glb.baudrate);
     Serial.println();
     // Serial.setRxBufferSize(INPUT_BUFFER_SIZE);               // Default is 256 chars
     TasConsole = Serial;
@@ -599,7 +601,7 @@ void setup(void) {
 
     // Ready for AddLog use
 
-    // AddLog(LOG_LEVEL_INFO, PSTR("ADR: Settings %p, Log %p"), Settings, TasmotaGlobal.log_buffer);
+    // AddLog(LOG_LEVEL_INFO, PSTR("ADR: Settings %p, Log %p"), Settings, glb.log_buffer);
     #if defined(ESP32)
     AddLog(LOG_LEVEL_INFO, PSTR("HDW: %s %s"), GetDeviceHardwareRevision().c_str(),
            FoundPSRAM() ? (CanUsePSRAM() ? "(PSRAM)" : "(PSRAM disabled)") : "");
@@ -624,11 +626,11 @@ void setup(void) {
 
     OsWatchInit();
 
-    TasmotaGlobal.seriallog_level = Settings->seriallog_level;
-    TasmotaGlobal.syslog_level    = Settings->syslog_level;
+    glb.seriallog_level = Settings->seriallog_level;
+    glb.syslog_level    = Settings->syslog_level;
 
-    TasmotaGlobal.module_changed = (Settings->module != Settings->last_module);
-    if (TasmotaGlobal.module_changed) {
+    glb.module_changed = (Settings->module != Settings->last_module);
+    if (glb.module_changed) {
         Settings->baudrate = APP_BAUDRATE / 300;
         Settings->serial_config = TS_SERIAL_8N1;
     }
@@ -650,10 +652,10 @@ void setup(void) {
         #endif // ESP32
     }
 
-    TasmotaGlobal.stop_flash_rotate =
+    glb.stop_flash_rotate =
         Settings->flag.stop_flash_rotate;                       // SetOption12 - Switch between dynamic or fixed slot flash save location
-    TasmotaGlobal.save_data_counter = Settings->save_data;
-    TasmotaGlobal.sleep = Settings->sleep;
+    glb.save_data_counter = Settings->save_data;
+    glb.sleep = Settings->sleep;
 
     #ifndef USE_EMULATION
     Settings->flag2.emulation = 0;
@@ -691,7 +693,7 @@ void setup(void) {
             if (RtcReboot.fast_reboot_count > Settings->param[P_BOOT_LOOP_OFFSET] + 2) { // Restarted 4 times
                 Settings->rule_enabled       = 0;                                        // Disable all rules
                 Settings->flag3.shutter_mode = 0;                                        // disable shutter support
-                TasmotaGlobal.no_autoexec    = true;
+                glb.no_autoexec    = true;
                 Settings->flag5.mi32_enable  = false; // disable BLE
             }
 
@@ -719,44 +721,44 @@ void setup(void) {
         }
     }
 
-    memcpy_P(TasmotaGlobal.version, VERSION_MARKER, 1); // Dummy for compiler saving VERSION_MARKER
+    memcpy_P(glb.version, VERSION_MARKER, 1); // Dummy for compiler saving VERSION_MARKER
 
-    snprintf_P(TasmotaGlobal.version, sizeof(TasmotaGlobal.version), PSTR("%d.%d.%d"), TASMOTA_VERSION >> 24 & 0xFF,
+    snprintf_P(glb.version, sizeof(glb.version), PSTR("%d.%d.%d"), TASMOTA_VERSION >> 24 & 0xFF,
                TASMOTA_VERSION >> 16 & 0xFF, TASMOTA_VERSION >> 8 & 0xFF);  // Release version 6.3.0
     if (TASMOTA_VERSION & 0xFF) {                                           // Development or patched version 6.3.0.10
-        snprintf_P(TasmotaGlobal.version, sizeof(TasmotaGlobal.version), PSTR("%s.%d"), TasmotaGlobal.version,
+        snprintf_P(glb.version, sizeof(glb.version), PSTR("%s.%d"), glb.version,
                    TASMOTA_VERSION & 0xFF);
     }
 
     // Thehackbox inserts "release" or "commit number" before compiling using sed -i -e
     // 's/PSTR("(%s)")/PSTR("(85cff52-%s)")/g' tasmota.ino Github inserts "release" or "commit number" before compiling
     // using sed -i -e 's/TASMOTA_SHA_SHORT/TASMOTA_SHA_SHORT 85cff52-/g' tasmota_version.h
-    snprintf_P(TasmotaGlobal.image_name, sizeof(TasmotaGlobal.image_name), PSTR("(" STR(TASMOTA_SHA_SHORT) "%s)"),
+    snprintf_P(glb.image_name, sizeof(glb.image_name), PSTR("(" STR(TASMOTA_SHA_SHORT) "%s)"),
                PSTR(CODE_IMAGE_STR)); // Results in (85cff52-tasmota) or (release-tasmota)
 
-    Format(TasmotaGlobal.mqtt_topic, SettingsText(SET_MQTT_TOPIC), sizeof(TasmotaGlobal.mqtt_topic));
+    Format(glb.mqtt_topic, SettingsText(SET_MQTT_TOPIC), sizeof(glb.mqtt_topic));
     if (strchr(SettingsText(SET_HOSTNAME), '%') != nullptr) {
         SettingsUpdateText(SET_HOSTNAME, WIFI_HOSTNAME);
-        snprintf_P(TasmotaGlobal.hostname, sizeof(TasmotaGlobal.hostname) - 1, SettingsText(SET_HOSTNAME),
-                   TasmotaGlobal.mqtt_topic, ESP_getChipId() & 0x1FFF);
+        snprintf_P(glb.hostname, sizeof(glb.hostname) - 1, SettingsText(SET_HOSTNAME),
+                   glb.mqtt_topic, ESP_getChipId() & 0x1FFF);
     }
     else {
-        snprintf_P(TasmotaGlobal.hostname, sizeof(TasmotaGlobal.hostname) - 1, SettingsText(SET_HOSTNAME));
+        snprintf_P(glb.hostname, sizeof(glb.hostname) - 1, SettingsText(SET_HOSTNAME));
     }
 
-    char* s = TasmotaGlobal.hostname;
+    char* s = glb.hostname;
     while (*s) {
         if (!(isalnum(*s) || ('.' == *s))) {
             *s = '-';
         } // Valid hostname chars are A..Z, a..z, 0..9, . and -
 
-        if ((s == TasmotaGlobal.hostname) && ('-' == *s)) {
+        if ((s == glb.hostname) && ('-' == *s)) {
             *s = 'x';
         } // First char cannot be a dash so replace by an x
         s++;
     }
-    snprintf_P(TasmotaGlobal.mqtt_topic, sizeof(TasmotaGlobal.mqtt_topic),
-               ResolveToken(TasmotaGlobal.mqtt_topic).c_str());
+    snprintf_P(glb.mqtt_topic, sizeof(glb.mqtt_topic),
+               ResolveToken(glb.mqtt_topic).c_str());
 
     RtcInit();
     GpioInit();                             // FUNC_SETUP_RING1 -> FUNC_SETUP_RING2 -> FUNC_MODULE_INIT -> FUNC_LED_LINK
@@ -768,20 +770,20 @@ void setup(void) {
     #endif // ROTARY_V1
 
     #if defined(USE_BERRY)
-    if (!TasmotaGlobal.no_autoexec) {
+    if (!glb.no_autoexec) {
         BerryInit(); // Load preinit.be
     }
     #endif // USE_BERRY
 
     XdrvXsnsCall(FUNC_PRE_INIT); // FUNC_PRE_INIT
 
-    TasmotaGlobal.init_state = INIT_GPIOS;
+    glb.init_state = INIT_GPIOS;
 
     SetPowerOnState(); // FUNC_SET_POWER -> FUNC_SET_DEVICE_POWER
     WifiConnect();
 
     AddLog(LOG_LEVEL_INFO, PSTR(D_PROJECT " %s - %s " D_VERSION " %s%s-" ARDUINO_CORE_RELEASE "(%s)"), PSTR(PROJECT),
-           SettingsText(SET_DEVICENAME), TasmotaGlobal.version, TasmotaGlobal.image_name,
+           SettingsText(SET_DEVICENAME), glb.version, glb.image_name,
            GetBuildDateAndTime().c_str());
     #if defined(FIRMWARE_MINIMAL)
     AddLog(LOG_LEVEL_INFO, PSTR(D_WARNING_MINIMAL_VERSION));
@@ -798,13 +800,15 @@ void setup(void) {
     }
     #endif // USE_SCRIPT
 
-    TasmotaGlobal.rules_flag.system_init = 1;
+    glb.rules_flag.system_init = 1;
 }
 
 void BacklogLoop(void) {
-    if (TimeReached(TasmotaGlobal.backlog_timer)) {
-        if (!BACKLOG_EMPTY && !TasmotaGlobal.backlog_mutex) {
-            TasmotaGlobal.backlog_mutex = true;
+    auto& glb = TasmotaGlobal;
+
+    if (TimeReached(glb.backlog_timer)) {
+        if (!BACKLOG_EMPTY && !glb.backlog_mutex) {
+            glb.backlog_mutex = true;
             bool nodelay = false;
 
             do {
@@ -819,21 +823,22 @@ void BacklogLoop(void) {
                     nodelay = true;
                 }
                 else {
-                    TasmotaGlobal.no_mqtt_response = TasmotaGlobal.backlog_no_mqtt_response;
+                    glb.no_mqtt_response = glb.backlog_no_mqtt_response;
                     ExecuteCommand(cmd, SRC_BACKLOG);
                     free(cmd);
-                    if (nodelay || TasmotaGlobal.backlog_nodelay) {
+                    if (nodelay || glb.backlog_nodelay) {
                         // Reset backlog_timer which has been set by ExecuteCommand (CommandHandler)
-                        TasmotaGlobal.backlog_timer = millis();       
+                        glb.backlog_timer = millis();
                     }
                     break;
                 }
             } while (!BACKLOG_EMPTY);
-            TasmotaGlobal.backlog_mutex = false;
+
+            glb.backlog_mutex = false;
         }
 
         if (BACKLOG_EMPTY) {
-            TasmotaGlobal.backlog_nodelay = false;
+            glb.backlog_nodelay = false;
         }
     }
 }
@@ -843,13 +848,15 @@ void SleepSkip(void) {
 }
 
 void SleepDelay(uint32_t mseconds) {
-    if (!TasmotaGlobal.backlog_nodelay && mseconds) {
+    auto& glb = TasmotaGlobal;
+
+    if (!glb.backlog_nodelay && mseconds) {
         uint32_t wait = millis() + mseconds;
-        while (!TasmotaGlobal.skip_sleep &&                     // We need to service imminent interrupts ASAP
+        while (!glb.skip_sleep &&                               // We need to service imminent interrupts ASAP
                !TimeReached(wait) &&
                !Serial.available()) {                           // We need to service serial buffer ASAP as otherwise we get uart buffer overrun
             XdrvXsnsCall(FUNC_SLEEP_LOOP);                      // Main purpose is reacting ASAP on serial data availability or interrupt handling (ADE7880)
-            if (TasmotaGlobal.skip_sleep) {
+            if (glb.skip_sleep) {
                 break;
             }
 
@@ -872,9 +879,9 @@ void Scheduler(void) {
     MdnsUpdate();
     #endif // ESP8266 && USE_DISCOVERY && USE_WEBSERVER && WEBSERVER_ADVERTISE
 
-    OsWatchLoop();
-    ButtonLoop();
-    SwitchLoop();
+    OsWatchLoop();                          // tasmota_support/support.ino
+    ButtonLoop();                           // tasmota_support/support_button_v4.ino
+    SwitchLoop();                           // tasmota_support/support_switch_v4.ino
 
     #if defined(USE_DEVICE_GROUPS)
     DeviceGroupsLoop();
@@ -935,25 +942,26 @@ void Scheduler(void) {
 
 void loop(void) {
     uint32_t my_sleep = millis();
+    auto& glb = TasmotaGlobal;
 
     Scheduler();
 
     uint32_t my_activity = millis() - my_sleep;
 
-    if (TasmotaGlobal.skip_sleep) {
-        TasmotaGlobal.skip_sleep--;                             // Temporarily skip sleep to handle imminent interrupts outside interrupt handler
+    if (glb.skip_sleep) {
+        glb.skip_sleep--;                             // Temporarily skip sleep to handle imminent interrupts outside interrupt handler
     }
     else {
         if (Settings->flag3.sleep_normal) {                     // SetOption60 - Enable normal sleep instead of dynamic sleep
             // yield();                                         // yield == delay(0), delay contains yield, auto yield in loop
-            SleepDelay(TasmotaGlobal.sleep);                    // https://github.com/esp8266/Arduino/issues/2021
+            SleepDelay(glb.sleep);                    // https://github.com/esp8266/Arduino/issues/2021
         }
         else {
-            if (my_activity < (uint32_t)TasmotaGlobal.sleep) {
-                SleepDelay((uint32_t)TasmotaGlobal.sleep - my_activity); // Provide time for background tasks like wifi
+            if (my_activity < (uint32_t)glb.sleep) {
+                SleepDelay((uint32_t)glb.sleep - my_activity); // Provide time for background tasks like wifi
             }
             else {
-                if (TasmotaGlobal.global_state.network_down) {
+                if (glb.global_state.network_down) {
                     // If wifi down and my_activity > setoption36 then force loop delay to 1/2 of my_activity period
                     SleepDelay(my_activity / 2);
                 }
@@ -965,14 +973,14 @@ void loop(void) {
         my_activity++;
     } // We cannot divide by 0
 
-    uint32_t loop_delay = TasmotaGlobal.sleep;
+    uint32_t loop_delay = glb.sleep;
     if (loop_delay == 0) {
         loop_delay++;
     } // We cannot divide by 0
 
     uint32_t loops_per_second = (1000 / loop_delay);            // We need to keep track of this many loops per second
     uint32_t this_cycle_ratio = (100 * my_activity / loop_delay);
-    TasmotaGlobal.loop_load_avg =
-        TasmotaGlobal.loop_load_avg - (TasmotaGlobal.loop_load_avg / loops_per_second) +
+    glb.loop_load_avg =
+        glb.loop_load_avg - (glb.loop_load_avg / loops_per_second) +
         (this_cycle_ratio / loops_per_second);                  // Take away one loop average away and add the new one
 }
